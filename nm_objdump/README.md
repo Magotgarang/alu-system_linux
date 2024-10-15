@@ -21,3 +21,4 @@ The `readelf` command is used to view the ELF file headers, program headers, sec
 #### Example:
 ```bash
 readelf -h <file>
+
