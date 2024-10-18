@@ -1,15 +1,12 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -pedantic -Werror
+CFLAGS = -Wall -Werror -Wextra -pedantic
 TARGET = hnm
-SRC = hnm.c elf_utils.c
-OBJ = $(SRC:.c=.o)
+SRCS = hnm.c
 
 all: $(TARGET)
 
-$(TARGET): $(OBJ)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJ)
+$(TARGET): $(SRCS)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRCS)
 
 clean:
-	rm -f $(OBJ) $(TARGET)
-
-re: clean all
+	rm -f $(TARGET)
