@@ -10,4 +10,3 @@ O(n)       # L9 - Counting the occurrences of a specific element (e.g., holberto
 O(n log n) # L10 - Sorting the list (e.g., holberton.sort())
 O(n)       # L11 - Reversing the list (e.g., holberton.reverse())
 O(1)       # L12 - Deleting the entire list (e.g., del holberton)
-
