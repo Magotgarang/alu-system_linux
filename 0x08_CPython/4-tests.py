@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import ctypes
 
 lib = ctypes.CDLL('./libPython.so')
@@ -14,6 +16,6 @@ s = "숟가락은 존재하지 않는다."
 lib.print_python_string(s)
 s = "スプーンは存在しない"
 lib.print_python_string(s)
-s = b"The spoon does not exist"  # Invalid string
+s = b"The spoon does not exist"
 lib.print_python_string(s)
 
