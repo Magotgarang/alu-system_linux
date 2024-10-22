@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import ctypes
 
 lib = ctypes.CDLL('./libPython.so')
@@ -24,8 +26,8 @@ i = 18446744073709551615
 lib.print_python_int(i)
 i = -18446744073709551615
 lib.print_python_int(i)
-i = 18446744073709551616  # Overflow case
+i = 18446744073709551616
 lib.print_python_int(i)
-i = "1"  # Invalid integer
+i = "1"
 lib.print_python_int(i)
 
