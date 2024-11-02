@@ -1,99 +1,140 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/ptrace.h>
-#include <sys/user.h>
-#include <sys/wait.h>
-#include <sys/types.h>
-#include <syscall.h>
-#include <errno.h>
-#include <fcntl.h>
+#include "strace.h"
 
-struct syscall_entry {
-    const char *name;
-    int nb_params;
-};
+void trace_child(char **av, char **envp);
+void trace_parent(pid_t child_pid);
+int await_syscall(pid_t child_pid);
+unsigned long get_syscall_param(struct user_regs_struct uregs, size_t i);
 
-struct syscall_entry syscalls_64_g[] = {
-    {"read", 3},
-    {"write", 3},
-    {"open", 2},
-    {"close", 1},
-    {"mmap", 6},
-    {"munmap", 2},
-    {"brk", 1},
-    {"execve", 3},
-    {"exit_group", 1},
-    {"access", 2},
-    // Add more syscalls as needed...
-};
+/**
+ * main - entry point
+ * @ac: argument count
+ * @av: argument vector
+ * @envp: environ
+ * Return: EXIT_SUCCESS or error.
+ */
+int main(int ac, char **av, char **envp)
+{
+	pid_t child_pid;
 
-void print_params(long params[], int nb_params) {
-    for (int i = 0; i < nb_params; i++) {
-        if (i > 0) printf(", ");
-        if (i < 6) {  // Assuming we are only dealing with the first 6 params for simplicity
-            printf("0x%lx", params[i]);
-        } else {
-            printf("...");
-            break;
-        }
-    }
+	if (ac < 2)
+	{
+		printf("Usage: %s command [args...]\n", av[0]);
+		return (EXIT_FAILURE);
+	}
+	setbuf(stdout, NULL);
+	child_pid = fork();
+	if (child_pid == -1)
+	{
+		dprintf(STDERR_FILENO, "Fork failed: %d\n", errno);
+		exit(-1);
+	}
+	else if (!child_pid)
+		trace_child(av, envp);
+	else
+		trace_parent(child_pid);
+	return (0);
 }
 
-int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s command [args...]\n", argv[0]);
-        return EXIT_FAILURE;
-    }
+/**
+ * trace_child - traces child process
+ * @av: argument vector for execve
+ * @envp: environ for execve
+ */
+void trace_child(char **av, char **envp)
+{
+	setbuf(stdout, NULL);
+	printf("execve(0, 0, 0) = 0\n");
+	ptrace(PTRACE_TRACEME, 0, 0, 0);
+	kill(getpid(), SIGSTOP);
+	if (execve(av[1], av + 1, envp) == -1)
+	{
+		dprintf(STDERR_FILENO, "Exec failed: %d\n", errno);
+		exit(-1);
+	}
+}
 
-    pid_t child;
-    child = fork();
-    if (child == 0) {
-        ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-        execvp(argv[1], &argv[1]);
-        perror("execvp");
-        return EXIT_FAILURE;
-    } else if (child < 0) {
-        perror("fork");
-        return EXIT_FAILURE;
-    }
+/**
+ * trace_parent - calls made by tracing parent
+ * @child_pid: pid of child to trace
+ */
+void trace_parent(pid_t child_pid)
+{
+	int status, i, first = 1;
+	struct user_regs_struct uregs;
 
-    int status;
-    struct user_regs_struct regs;
+	waitpid(child_pid, &status, 0);
+	ptrace(PTRACE_SETOPTIONS, child_pid, 0, PTRACE_O_TRACESYSGOOD);
+	while (1)
+	{
+		if (await_syscall(child_pid))
+			break;
+		memset(&uregs, 0, sizeof(uregs));
+		ptrace(PTRACE_GETREGS, child_pid, 0, &uregs);
+		if (first && uregs.orig_rax == 59)
+			first = 1;
+		else
+		{
+			printf("%s(", syscalls_64_g[uregs.orig_rax].name);
+			for (i = 0; i < (int)syscalls_64_g[uregs.orig_rax].nb_params; i++)
+			{
+				if (i)
+					printf(", ");
+				if (syscalls_64_g[uregs.orig_rax].params[i] == VARARGS)
+					printf("...");
+				else
+					printf("%#lx", get_syscall_param(uregs, i));
+			}
+		}
+		if (await_syscall(child_pid))
+			break;
+		memset(&uregs, 0, sizeof(uregs));
+		ptrace(PTRACE_GETREGS, child_pid, 0, &uregs);
+		if (first && uregs.orig_rax == 59)
+			first = 0;
+		else
+			printf(") = %#lx\n", (unsigned long)uregs.rax);
+	}
+}
 
-    while (1) {
-        wait(&status);
-        if (WIFEXITED(status)) break;
+/**
+ * await_syscall - waits for a syscall
+ * @child_pid: pid of process to await
+ * Return: 0 if child stopped, 1 if exited
+ */
+int await_syscall(pid_t child_pid)
+{
+	int status;
 
-        ptrace(PTRACE_GETREGS, child, NULL, &regs);
+	while (1)
+	{
+		ptrace(PTRACE_SYSCALL, child_pid, 0, 0);
+		waitpid(child_pid, &status, 0);
+		if (WIFSTOPPED(status) && WSTOPSIG(status) & 0x80)
+			return (0);
+		if (WIFEXITED(status))
+		{
+			printf(") = ?\n");
+			return (1);
+		}
+	}
+}
 
-        // Get syscall number
-        long syscall_num = regs.orig_rax;
-        if (syscall_num < 0 || syscall_num >= sizeof(syscalls_64_g)/sizeof(syscalls_64_g[0])) {
-            printf("syscall(%ld) = ?\n", syscall_num);
-            continue;
-        }
-
-        struct syscall_entry *entry = &syscalls_64_g[syscall_num];
-        long params[6] = {
-            regs.rdi, regs.rsi, regs.rdx, regs.r10, regs.r8, regs.r9
-        };
-
-        // Print syscall name and parameters
-        printf("%s(", entry->name);
-        print_params(params, entry->nb_params);
-        printf(")");
-
-        // Execute the syscall
-        ptrace(PTRACE_SYSCALL, child, NULL, NULL);
-        wait(&status);
-        ptrace(PTRACE_GETREGS, child, NULL, &regs);
-
-        // Get return value
-        long ret_val = regs.rax;
-        printf(" = 0x%lx\n", ret_val);
-    }
-
-    return EXIT_SUCCESS;
+/**
+ * get_syscall_param - gets given parameter for syscall
+ * @uregs: userspace register struct
+ * @i: syscall parameter index
+ * Return: value of param
+ */
+unsigned long get_syscall_param(struct user_regs_struct uregs, size_t i)
+{
+	switch (i)
+	{
+		case 0: return (uregs.rdi);
+		case 1: return (uregs.rsi);
+		case 2: return (uregs.rdx);
+		case 3: return (uregs.r10);
+		case 4: return (uregs.r8);
+		case 5: return (uregs.r9);
+		default: return (-1);
+	}
 }
