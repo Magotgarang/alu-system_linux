@@ -1,4 +1,13 @@
-#include "strace.h"
+#include <stdio.h>      // for printf
+#include <stdlib.h>     // for exit, EXIT_FAILURE
+#include <unistd.h>     // for fork, execve, STDERR_FILENO, pid_t
+#include <errno.h>      // for errno
+#include <string.h>     // for memset
+#include <signal.h>     // for kill and SIGSTOP
+#include <sys/wait.h>   // for waitpid
+#include <sys/ptrace.h> // for ptrace
+#include <sys/types.h>  // for pid_t type
+#include <sys/user.h>   // for user_regs_struct
 
 void trace_child(char **av, char **envp);
 void trace_parent(pid_t child_pid);
@@ -14,25 +23,25 @@ unsigned long get_syscall_param(struct user_regs_struct uregs, size_t i);
  */
 int main(int ac, char **av, char **envp)
 {
-	pid_t child_pid;
+    pid_t child_pid;
 
-	if (ac < 2)
-	{
-		printf("Usage: %s command [args...]\n", av[0]);
-		return (EXIT_FAILURE);
-	}
-	setbuf(stdout, NULL);
-	child_pid = fork();
-	if (child_pid == -1)
-	{
-		dprintf(STDERR_FILENO, "Fork failed: %d\n", errno);
-		exit(-1);
-	}
-	else if (!child_pid)
-		trace_child(av, envp);
-	else
-		trace_parent(child_pid);
-	return (0);
+    if (ac < 2)
+    {
+        printf("Usage: %s command [args...]\n", av[0]);
+        return (EXIT_FAILURE);
+    }
+    setbuf(stdout, NULL);
+    child_pid = fork();
+    if (child_pid == -1)
+    {
+        dprintf(STDERR_FILENO, "Fork failed: %d\n", errno);
+        exit(-1);
+    }
+    else if (!child_pid)
+        trace_child(av, envp);
+    else
+        trace_parent(child_pid);
+    return (0);
 }
 
 /**
@@ -42,15 +51,15 @@ int main(int ac, char **av, char **envp)
  */
 void trace_child(char **av, char **envp)
 {
-	setbuf(stdout, NULL);
-	printf("execve(0, 0, 0) = 0\n");
-	ptrace(PTRACE_TRACEME, 0, 0, 0);
-	kill(getpid(), SIGSTOP);
-	if (execve(av[1], av + 1, envp) == -1)
-	{
-		dprintf(STDERR_FILENO, "Exec failed: %d\n", errno);
-		exit(-1);
-	}
+    setbuf(stdout, NULL);
+    printf("execve(0, 0, 0) = 0\n");
+    ptrace(PTRACE_TRACEME, 0, 0, 0);
+    kill(getpid(), SIGSTOP);
+    if (execve(av[1], av + 1, envp) == -1)
+    {
+        dprintf(STDERR_FILENO, "Exec failed: %d\n", errno);
+        exit(-1);
+    }
 }
 
 /**
@@ -59,41 +68,41 @@ void trace_child(char **av, char **envp)
  */
 void trace_parent(pid_t child_pid)
 {
-	int status, i, first = 1;
-	struct user_regs_struct uregs;
+    int status, i, first = 1;
+    struct user_regs_struct uregs;
 
-	waitpid(child_pid, &status, 0);
-	ptrace(PTRACE_SETOPTIONS, child_pid, 0, PTRACE_O_TRACESYSGOOD);
-	while (1)
-	{
-		if (await_syscall(child_pid))
-			break;
-		memset(&uregs, 0, sizeof(uregs));
-		ptrace(PTRACE_GETREGS, child_pid, 0, &uregs);
-		if (first && uregs.orig_rax == 59)
-			first = 1;
-		else
-		{
-			printf("%s(", syscalls_64_g[uregs.orig_rax].name);
-			for (i = 0; i < (int)syscalls_64_g[uregs.orig_rax].nb_params; i++)
-			{
-				if (i)
-					printf(", ");
-				if (syscalls_64_g[uregs.orig_rax].params[i] == VARARGS)
-					printf("...");
-				else
-					printf("%#lx", get_syscall_param(uregs, i));
-			}
-		}
-		if (await_syscall(child_pid))
-			break;
-		memset(&uregs, 0, sizeof(uregs));
-		ptrace(PTRACE_GETREGS, child_pid, 0, &uregs);
-		if (first && uregs.orig_rax == 59)
-			first = 0;
-		else
-			printf(") = %#lx\n", (unsigned long)uregs.rax);
-	}
+    waitpid(child_pid, &status, 0);
+    ptrace(PTRACE_SETOPTIONS, child_pid, 0, PTRACE_O_TRACESYSGOOD);
+    while (1)
+    {
+        if (await_syscall(child_pid))
+            break;
+        memset(&uregs, 0, sizeof(uregs));
+        ptrace(PTRACE_GETREGS, child_pid, 0, &uregs);
+        if (first && uregs.orig_rax == 59)
+            first = 1;
+        else
+        {
+            printf("%s(", syscalls_64_g[uregs.orig_rax].name);
+            for (i = 0; i < (int)syscalls_64_g[uregs.orig_rax].nb_params; i++)
+            {
+                if (i)
+                    printf(", ");
+                if (syscalls_64_g[uregs.orig_rax].params[i] == VARARGS)
+                    printf("...");
+                else
+                    printf("%#lx", get_syscall_param(uregs, i));
+            }
+        }
+        if (await_syscall(child_pid))
+            break;
+        memset(&uregs, 0, sizeof(uregs));
+        ptrace(PTRACE_GETREGS, child_pid, 0, &uregs);
+        if (first && uregs.orig_rax == 59)
+            first = 0;
+        else
+            printf(") = %#lx\n", (unsigned long)uregs.rax);
+    }
 }
 
 /**
@@ -103,20 +112,20 @@ void trace_parent(pid_t child_pid)
  */
 int await_syscall(pid_t child_pid)
 {
-	int status;
+    int status;
 
-	while (1)
-	{
-		ptrace(PTRACE_SYSCALL, child_pid, 0, 0);
-		waitpid(child_pid, &status, 0);
-		if (WIFSTOPPED(status) && WSTOPSIG(status) & 0x80)
-			return (0);
-		if (WIFEXITED(status))
-		{
-			printf(") = ?\n");
-			return (1);
-		}
-	}
+    while (1)
+    {
+        ptrace(PTRACE_SYSCALL, child_pid, 0, 0);
+        waitpid(child_pid, &status, 0);
+        if (WIFSTOPPED(status) && WSTOPSIG(status) & 0x80)
+            return (0);
+        if (WIFEXITED(status))
+        {
+            printf(") = ?\n");
+            return (1);
+        }
+    }
 }
 
 /**
@@ -127,14 +136,14 @@ int await_syscall(pid_t child_pid)
  */
 unsigned long get_syscall_param(struct user_regs_struct uregs, size_t i)
 {
-	switch (i)
-	{
-		case 0: return (uregs.rdi);
-		case 1: return (uregs.rsi);
-		case 2: return (uregs.rdx);
-		case 3: return (uregs.r10);
-		case 4: return (uregs.r8);
-		case 5: return (uregs.r9);
-		default: return (-1);
-	}
+    switch (i)
+    {
+        case 0: return (uregs.rdi);
+        case 1: return (uregs.rsi);
+        case 2: return (uregs.rdx);
+        case 3: return (uregs.r10);
+        case 4: return (uregs.r8);
+        case 5: return (uregs.r9);
+        default: return (-1);
+    }
 }
