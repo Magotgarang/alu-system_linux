@@ -1,52 +1,46 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <arpa/inet.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
+#include <stdlib.h>
+#include <stdio.h>
 
-int main(void)
+#define PORT 12345
+
+/**
+ * main - socket server
+ * @ac: argument vector
+ * @av: argument count
+ * Return: SUCCESS or FAILURE
+ */
+int main(int ac, char **av)
 {
-    int server_fd;
-    struct sockaddr_in address;
-    int opt = 1;
+	int sd;
+	struct sockaddr_in name;
 
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == -1)
-    {
-        perror("Socket failed");
-        return EXIT_FAILURE;
-    }
+	sd = socket(PF_INET, SOCK_STREAM, 0);
+	if (sd < 0)
+	{
+		perror("socket failed");
+		return (EXIT_FAILURE);
+	}
+	name.sin_family = AF_INET;
+	name.sin_port = htons(PORT);
+	name.sin_addr.s_addr = htonl(INADDR_ANY);
+	if (bind(sd, (struct sockaddr *)&name, sizeof(name)) < 0)
+	{
+		perror("bind failure");
+		return (EXIT_FAILURE);
+	}
+	if (listen(sd, 10) < 0)
+	{
+		perror("listen failure");
+		return (EXIT_FAILURE);
+	}
 
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
-    {
-        perror("Setsockopt failed");
-        return EXIT_FAILURE;
-    }
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(12345);
-
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
-    {
-        perror("Bind failed");
-        return EXIT_FAILURE;
-    }
-
-    if (listen(server_fd, 3) < 0)
-    {
-        perror("Listen failed");
-        return EXIT_FAILURE;
-    }
-
-    printf("Server listening on port 12345\n");
-
-    // Infinite loop to keep the server running
-    while (1)
-    {
-        pause();  // Wait for signals
-    }
-
-    return EXIT_SUCCESS;
+	printf("LISTENING...\n");
+	while (1)
+		;
+	return (EXIT_SUCCESS);
+	(void)ac;
+	(void)av;
 }
 
