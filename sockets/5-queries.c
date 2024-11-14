@@ -1,43 +1,40 @@
-#include "http.h"
+#include <stdio.h>
+#include <string.h>
 
-int accept_messages(int sd);
-void parse_header(char *buf);
 
 /**
- * main - entry point
- * @ac: argument vector
- * @av: argument count
- * Return: SUCCESS or FAILURE
+ * print_path_and_queries - helper for take_requests()
+ *
+ * @buffer: buffer containing client request
  */
-int main(int ac, char **av)
+static void print_path_and_queries(char *buffer)
 {
-	return (start_server());
-	(void)ac;
-	(void)av;
+	char *path, *key, *value;
+
+	path = strtok(strtok(strchr(buffer, ' ') + 1, " "), "?");
+
+	printf("Path: %s\n", path);
+
+	for (
+		key = strtok(NULL, "="), value = strtok(NULL, "&/");
+		key && value;
+		key = strtok(NULL, "="), value = strtok(NULL, "&/")
+	)
+		printf("Query: \"%s\" -> \"%s\"\n", key, value);
 }
 
 /**
- * parse_request - parses HTTP header and prints fields
- * @client_sd: the client socket descriptor
- * @buf: string buffer containing message text
- * Return: 0 on success else 1
+ * make_response - creates response to a request
+ *
+ * @address: adress to respond to (only needed for info printing purposes)
+ * @request: buffer containing request from address
+ * Return: response
  */
-int parse_request(int client_sd, char *buf)
+char *make_response(char *address, char *request)
 {
-	char *DELIMS = " \t\r\n";
-	char *path, *query, *save1, *key, *value, *save2;
-
-	strtok(buf, DELIMS);
-	path = strtok(NULL, DELIMS);
-	path = strtok_r(path, "?", &save1);
-	printf("Path: %s\n", path);
-	query = strtok_r(NULL, "&", &save1);
-	while (query)
-	{
-		key = strtok_r(query, "=", &save2);
-		value = strtok_r(NULL, "=", &save2);
-		printf("Query: \"%s\" -> \"%s\"\n", key, value);
-		query = strtok_r(NULL, "&", &save1);
-	}
-	return (send_response(client_sd, RESPONSE_200));
+	printf("Client connected: %s\n", address);
+	printf("Raw request: \"%s\"\n", request);
+	print_path_and_queries(request);
+	fflush(stdout);
+	return (strdup("HTTP/1.1 200 OK\r\n\r\n"));
 }
